@@ -312,7 +312,6 @@ ReadDirectoryLoop:
     RTS
     
 ReadFATEntry:
-    ;TODO: Make this actually work
     ;Read the FAT data for the specified cluster.
     ;Input:
     ;   a2 is the start of the FAT
