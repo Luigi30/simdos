@@ -1,6 +1,7 @@
 ;FAT12 library for Easy68K.
 
 ReadBootSector:
+    ;Read the BPB into a structure in memory.
     lea     floppy_data, a1
     move.l  #$200000, floppy_pointer
     
@@ -105,6 +106,10 @@ CopyRootDirectoryEntry:
     RTS   
     
 PrintDirectoryEntry:
+    ;One line that comes out when we do a DIR command.
+    ;This retrieves the data for the command and writes it to the screen.
+    ;Called once per entry in the directory.
+    
     ;directory entry is 32 bytes loaded into file_directory_entry
     PushAll
     
@@ -134,25 +139,27 @@ PrintDirectoryEntry:
     move.b  #$20, d1
     trap    #15    
     
-.filesize:
+.filesize: ;File size in bytes.
     add.l   #20, a4
     move.l  a4, a1
     move.l  a1, a0
     jsr     Read32BitLittleEndian
     
     cmp     #0, d1
-    beq     .label_dir
+    beq     .label_dir ;If the file size is 0, it's either a 0-byte file or a directory.
     
-.label_file:
+.label_file: ;Assume any files bigger than 0 bytes are a file.
     move.b  #20, d0
     move.b  #8, d2
     trap    #15
     jmp     .label_date
     
-.label_dir:
+.label_dir: ;Print <DIR> on 0-byte files (todo: fix this, only directories)
     PrintString msg_directory
     
 .label_date:
+    ;Convert the date code into a human-readable YYYY-DD-MM date.
+
     ;spacer
     move.b  #6, d0
     move.b  #$20, d1
@@ -227,6 +234,8 @@ PrintDirectoryEntry:
     POP     d2
     
 .lbl_cluster:
+    ;Debugging: What cluster does this file start on?
+    
     ;spacer
     move.b  #6, d0
     move.b  #$20, d1
