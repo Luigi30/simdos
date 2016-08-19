@@ -1,5 +1,8 @@
 ;FAT12 library for Easy68K.
 
+    SECTION FAT12
+    ORG     $A000
+
 ReadBootSector:
     ;Read the BPB into a structure in memory.
     lea     floppy_data, a1
@@ -196,6 +199,7 @@ ReadRootDirectoryEntry:
 CopyRootDirectoryEntry:
     move.b  (a0)+, (a1)+
     dbra    d2, CopyRootDirectoryEntry
+    
     PopAll
     RTS   
     
@@ -211,7 +215,7 @@ PrintDirectoryEntry:
     
 .filename:
     ;8 characters
-    move    a4, a1
+    move.l  a4, a1
     move.w  #8, d1
     move.b  #1, d0
     trap    #15
@@ -465,9 +469,44 @@ ReadFATEntry:
         
 .done:
     RTS
+    
+GetStartingCluster:
+    ;Call ReadRootDirectoryEntry repeatedly.
+    ;Stop after 224 loops or when we find the file we need.
+    ;Input: 
+    ;   a0.l = address of string to find
+    ;Output:
+    ;   d0.w = starting cluster of the file, 0x0000 if not found
+    PUSH    a1
+    PUSH    d7
+    
+    move.w  #$FFFF, file_index
+    move.b  #223, d7
+.loop:
+    addq    #1, file_index
+    JSR     ReadRootDirectoryEntry
+    JSR     strlen ;will return string length in d0
+    lea     file_directory_entry, a1
+    JSR     StringsAreEqual ;compare d0.b bytes of a0 and a1
+    beq     .found
+    dbra    d7, .loop
+    
+.notfound:
+    PrintStringNL   msg_invalid_image
+    jmp     .done
+    
+.found:
+    PrintStringNL   msg_valid_image
+    move.w  file_directory_entry+26, d0
+    ror.w   #8, d0
+    jmp     .done
+    
+.done:
+    POP     d7
+    POP     a1
+    RTS
 
-    ;SECTION DATA
-    ;ORG     $FE00
+    ORG     $B000
 ;Constants
 SECTOR_ROOT_DIR     equ     19
 DIR_ENTRY_SIZE      equ     32
@@ -516,6 +555,7 @@ msg_bytes_free      dc.b    ' bytes free',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
 
 
 

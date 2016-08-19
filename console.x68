@@ -4,17 +4,21 @@
 * Date       :
 * Description:
 *-----------------------------------------------------------
+
 CODE    EQU     0
 DATA    EQU     1
 MACROS  EQU     2
+FAT12   EQU     3
 
-;Macros will live here for now
     SECTION MACROS
     ORG     $8000
     include 'print_macros.x68'
     include 'stack_macros.x68'
     include 'memory_macros.x68'
 
+    ;Goal:
+    ;Main code between $1000-7FFF
+    ;Main variables $F000-$FFFF
     SECTION CODE
     ORG     $1000
     
@@ -45,9 +49,10 @@ START:                  ; first instruction of program
     move.l  floppy_data, floppy_pointer
     jsr     ReadBootSector
     
-    move.l  #$300000, a0
-    move.w  #$191, d0
-    jsr     ReadFileIntoMemory
+    ;for testing, just read the file at cluster 0x40F into 0x400000
+    ;move.l  #$400000, a0
+    ;move.w  #$40F, d0
+    ;jsr     ReadFileIntoMemory
     
     PrintStringNL   msg_ready
    
@@ -72,7 +77,6 @@ ConsoleLoop:
 ReadFileIntoMemory:
     ;Read file starting at cluster d0.w into (a0).l
     ;In FAT12, 1 cluster = 1 sector
-    ;for testing, just read the file at cluster 0x191 into 0x300000
         
     ;find this file in the FAT.
     clr.l   d2    
@@ -125,6 +129,7 @@ CommandCheckLoop:
     lea     input_buffer, a0
     move.w  #command_length, d0
     JSR     CapitalizeString ;capitalize the input
+    JSR     FindCommandLength ;find the length of the first word of the command
     JSR     StringsAreEqual ;compare d0.b bytes at a0 and a1
     cmp.b   #0, d0 ;0 = equal, 1 = not equal
     beq     .equal
@@ -149,6 +154,30 @@ CommandCheckLoop:
     jsr     (a1) ;do the command
     
 .gohome:
+    RTS
+    
+FindCommandLength:
+    ;Find the first 0x20 or 0x00 in the command.
+    PUSH    a0-a6
+    PUSH    d1-d7
+    
+    lea     input_buffer, a0
+    move.l  #command_length, d1
+    subq    #1, d1
+    move.l  #$0000FFFF, d0
+    
+.loop:
+    addq.w  #1, d0
+    cmp.b   #$20, (a0)
+    beq     .done
+    cmp.b   #$00, (a0)
+    beq     .done
+    addq.l  #1, a0
+    dbra    d1, .loop
+    
+.done:    
+    POP     d1-d7
+    POP     a0-a6
     RTS
 
 DoShutdownCommand:
@@ -305,11 +334,23 @@ CapitalizeString:
     RTS
     
 DoLoadCommand:
-    PrintStringNL   cmd_doing_load
+    ;move.l  #'NUMB', filename_buffer
+    ;move.l  #'ER  ', filename_buffer+4
+    ;lea     filename_buffer, a0
+    lea     input_buffer+5, a0
+    jsr     GetStartingCluster ;puts starting cluster in d0
+    
+    move.l  #$800000, a0
+    jsr     ReadFileIntoMemory
+    
     RTS
     
-    ;FAT12 driver goes at the end
-    include 'fat12.x68'
+DoRunCommand:
+    PushAll
+    move.l  #$800000, a0
+    jsr     (a0)
+    PopAll
+    rts
     
     SECTION DATA
     ORG     $F000
@@ -321,8 +362,9 @@ msg_ready       dc.b    'Ready.',0
 newline_str     dc.b    $0D,$0A,0
 prompt_str      dc.b    '> ',0
 input_buffer    dcb.b   80,$00
+filename_buffer dcb.b   12,$00
     
-command_count   equ     3 ;how many commands are there?
+command_count   equ     4 ;how many commands are there?
 command_length  equ     8 ;how long can a command be?
 command_index   dcb.w   1,$00 ;which command did we just enter?
 cmd_invalid     dc.b    'Command not recognized',0
@@ -337,15 +379,20 @@ ConsoleCommandTable:
 cmd_shutdown    dc.b    'SHUTDOWN'
 cmd_dir         dc.b    'DIR',0,0,0,0,0
 cmd_load        dc.b    'LOAD',0,0,0,0
+cmd_run         dc.b    'RUN',0,0,0,0,0
 
                     ds.w    0 ;force even word alignment
 ConsoleCommandAddressTable:
 cmd_shutdown_effect dc.l    DoShutdownCommand
 cmd_dir_effect      dc.l    DoDirCommand
 cmd_load_effect     dc.l    DoLoadCommand
+cmd_run_effect      dc.l    DoRunCommand
 
-
+    ;FAT12 driver lives at $A000-$C000
+    include 'fat12.x68'
+    
     END    START        ; last line of source
+
 
 
 

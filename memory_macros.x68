@@ -12,6 +12,27 @@ memset:
     PopAll  
     RTS
     
+strlen:
+    ;Takes a null-terminated string.
+    ;a0.l = string to test
+    ;d0.b = string length, max 255
+    PUSH    a0-a7
+    PUSH    d1-d7
+    
+    move.l  #$0000FFFF, d0
+    move.l  #$000000FE, d1
+    
+.loop:
+    addq.w  #1, d0
+    cmp.b   #$00, (a0)+
+    beq     .done
+    dbra    d1, .loop    
+    
+.done:
+    POP     d1-d7
+    POP     a0-a7
+    RTS
+    
 StringsAreEqual:
     ;Compare d0.b bytes of the strings at a0.L and a1.L.
     ;If equal, d0 will be set to 0. If not, d0.B will be set to 1.
@@ -45,6 +66,7 @@ StringsAreEqual:
     POP     a1
     POP     a0
     RTS
+
 *~Font name~Courier New~
 *~Font size~10~
 *~Tab type~1~
