@@ -4,12 +4,18 @@
 * Date       :
 * Description:
 *-----------------------------------------------------------
+CODE    EQU     0
+DATA    EQU     1
+MACROS  EQU     2
+
 ;Macros will live here for now
-    ORG     $4000
+    SECTION MACROS
+    ORG     $8000
     include 'print_macros.x68'
     include 'stack_macros.x68'
     include 'memory_macros.x68'
 
+    SECTION CODE
     ORG     $1000
     
 START:                  ; first instruction of program
@@ -133,9 +139,7 @@ CommandCheckLoop:
     PrintStringNL cmd_invalid
     jmp     .gohome
     
-.equal:
-    PrintStringNL cmd_valid
-    
+.equal:   
     ;find the command in the jump table
     lea     ConsoleCommandAddressTable, a0
     move.w  #$00000004, d0
@@ -153,14 +157,84 @@ DoShutdownCommand:
     rts
     
 DoDirCommand:
-    move.l  #8, d0 ;TODO: there are 9 files in the root
+    ;this gets the volume name, for now
+    lea     floppy_data, a0
+    jsr     CountObjectsInRootDirectory
+    clr.l   d6
+    add     d0, d6
+    add     d7, d6
+
+    ;display volume name text
+    PrintString msg_volume_name
+    move.l  #0, d0
+    lea     volume_label, a1
+    move.l  #11, d1
+    trap    #15
     
+    ;display volume serial number text
+    PrintString msg_volume_serial
+    move.l  #15, d0
+    move.w  volume_serial, d1
+    move.b  #16, d2
+    trap    #15
+    
+    move.b  #6, d0
+    move.b  #$2D, d1
+    trap    #15
+    
+    move.l  #15, d0
+    move.w  volume_serial+2, d1
+    move.b  #16, d2
+    trap    #15
+    
+    PrintString newline_str
+
+    ;move.l  #9, d0 ;TODO: there are 10 objects in the root, get that number dynamically    
+    move.l  d6, d0
 .dirloop: 
-    ;loop over root directory entries and display them.
+    ;loop over root directory entries and display them.    
     move.w  d0, file_index
     jsr ReadRootDirectoryEntry
+    lea     file_directory_entry, a2
+    add     #11, a2    
+    btst    #3, (a2)
+    bne     .loop ;Don't print volume labels.
     jsr PrintDirectoryEntry    
+    
+.loop:
     dbra    d0, .dirloop
+    
+    ;output number of files in directory
+    clr.l   d0
+    clr.l   d1
+    clr.l   d2
+    clr.l   d7
+    lea     floppy_data, a0
+    jsr     CountObjectsInRootDirectory
+    move.w  d0, d1
+    move.l  #20, d0
+    move.b  #4, d2
+    trap    #15
+    PrintStringNL   msg_file_count
+    
+    move.w  d7, d1
+    trap    #15
+    PrintStringNL   msg_directory_count
+    
+    move.b  #20, d0
+    move.l  total_file_size, d1
+    move.b  #10, d2
+    trap    #15
+    PrintStringNL   msg_bytes_used
+    
+    move.w  bytes_per_sector, d1
+    move.w  sector_count, d3
+    sub     #33, d3 ;33 sectors are reserved
+    mulu    d3, d1
+    sub.l   total_file_size, d1
+    trap    #15
+    PrintStringNL   msg_bytes_free
+    
     rts
     
 Read16BitLittleEndian:
@@ -230,6 +304,15 @@ CapitalizeString:
     POP     d0
     RTS
     
+DoLoadCommand:
+    PrintStringNL   cmd_doing_load
+    RTS
+    
+    ;FAT12 driver goes at the end
+    include 'fat12.x68'
+    
+    SECTION DATA
+    ORG     $F000
 ;Constants and variables and tables and stuff
 msg_boot        dc.b    'Sim68k Disk Operating System ROM',0
 msg_ramdisk     dc.b    'Ramdisk located at 0x',0
@@ -239,29 +322,35 @@ newline_str     dc.b    $0D,$0A,0
 prompt_str      dc.b    '> ',0
 input_buffer    dcb.b   80,$00
     
-command_count   equ     2 ;how many commands are there?
+command_count   equ     3 ;how many commands are there?
 command_length  equ     8 ;how long can a command be?
 command_index   dcb.w   1,$00 ;which command did we just enter?
 cmd_invalid     dc.b    'Command not recognized',0
 cmd_valid       dc.b    'OK',0
 
 cmd_halting     dc.b    'Halting system.',0
-cmd_doing_dir   dc.b    'Doing DIR, beep boop.',0
+cmd_doing_load  dc.b    'Doing LOAD, beep boop.',0
 
 ;All commands are 8 characters, padded with nulls.
+                ds.w    0 ;force even word alignment
 ConsoleCommandTable:
 cmd_shutdown    dc.b    'SHUTDOWN'
 cmd_dir         dc.b    'DIR',0,0,0,0,0
+cmd_load        dc.b    'LOAD',0,0,0,0
 
+                    ds.w    0 ;force even word alignment
 ConsoleCommandAddressTable:
 cmd_shutdown_effect dc.l    DoShutdownCommand
 cmd_dir_effect      dc.l    DoDirCommand
+cmd_load_effect     dc.l    DoLoadCommand
 
-    
-    ;FAT12 driver goes at the end
-    include 'fat12.x68'
 
     END    START        ; last line of source
+
+
+
+
+
 
 
 

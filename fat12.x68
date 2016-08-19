@@ -76,8 +76,102 @@ ReadBootSector:
     move.l  floppy_pointer, a0
     jsr Read16BitLittleEndian
     move.w  d1, hidden_sector_count
-    add.l   #$00000002, floppy_pointer 
+    add.l   #$00000002, floppy_pointer
+    
+    ;4 bytes: Volume serial
+    lea     floppy_data, a0
+    add     #$27, a0
+    lea     volume_serial, a1
+    move.b  1(a0), 0(a1)
+    move.b  0(a0), 1(a1)
+    move.b  3(a0), 2(a1)
+    move.b  2(a0), 3(a1)
+    ;move.l  (a0),(a1)
+    
+    ;11 bytes: Volume label
+    lea     floppy_data, a0
+    add     #$2B, a0
+    lea     volume_label, a1
+    move.l  #10, d6
+.read_volume_label:
+    move.b  (a0)+, (a1)+
+    dbra    d6, .read_volume_label
 
+    RTS
+    
+CountObjectsInRootDirectory:
+    ;Input:
+    ;a0.l = address of floppy data
+    ;Output:
+    ;d0.w = number of files in root directory.
+    ;d7.w = number of directories in root directory.
+    PUSH    a1-a7
+    PUSH    d1-d6
+    
+    move.l  #$0, total_file_size
+    
+    clr.l   d0 ;number of files in directory
+    clr.l   d1 ;offset calculation
+    clr.l   d2 ;directory index we're at
+    clr.l   d4
+    clr.l   d7 ;number of directories in directory
+    move.b  #SECTOR_ROOT_DIR, d1 ;root directory is sector 19
+    mulu.w  bytes_per_sector, d1 ;offset of sector 19
+    move.l  a0, a1
+    add     d1, a1 ;a1 = start of the root directory
+    
+.chek:
+    ;Check the first byte of the root directory entry.
+    cmp.b   #$00, (a1) ;$00 = unallocated entry
+    beq     .next
+    
+    cmp.b   #$E5, (a1) ;$E5 = deleted file
+    beq     .next
+    
+    ;This is a real object. Is it a file or a directory?
+    move.b  11(a1), d3
+    btst    #3, d3
+    bne     .lbl ;Neither, it's a volume label!
+    btst    #4, d3
+    bne     .dir
+    
+.file:
+    ;Increment the counter, add to the running file size total, and proceed to the next file.
+    PUSH    a0
+    PUSH    d1
+    move.l  a1, a0
+    add     #28, a0
+    jsr     Read32BitLittleEndian
+    add.l   d1, total_file_size
+    POP     d1
+    POP     a0
+    
+    addi    #1, d0
+    jmp     .next
+    
+.dir:
+    addi    #1, d7
+    jmp     .next
+
+.next:
+    add.b   #1, d2
+    add.l   #32, a1
+    cmp.b   #224, d2 ;have we processed 224 directory entries?
+    beq     .done
+    jmp     .chek
+    
+.lbl:
+    move.l  a1, a4
+    move.l  #10, d4
+    lea     volume_label, a5
+.loop:
+    move.b  (a4)+, (a5)+
+    dbra    d4, .loop
+    jmp     .next
+
+.done:
+    POP     d1-d6
+    POP     a1-a7
     RTS
     
 ReadRootDirectoryEntry:
@@ -336,7 +430,6 @@ ReadFATEntry:
     bne     .read_fat_low
     
 .read_fat_high:
-    
     ;low 8 bits
     move.w  d4, d6
     mulu.w  #3, d6
@@ -373,6 +466,11 @@ ReadFATEntry:
 .done:
     RTS
 
+    ;SECTION DATA
+    ;ORG     $FE00
+;Constants
+SECTOR_ROOT_DIR     equ     19
+DIR_ENTRY_SIZE      equ     32
     
 ;Variables
 floppy_name         dc.b    'floppy.ima',0
@@ -394,7 +492,9 @@ sectors_per_fat     dcb.w   1,$00
 sectors_per_track   dcb.w   1,$00
 number_of_heads     dcb.w   1,$00
 hidden_sector_count dcb.w   1,$00
-next_fat_high_or_low    dcb.b   1,$00 ;$00 = high, $FF = low
+volume_serial       dcb.l   1,$00
+volume_label        dcb.b   11,$00
+total_file_size     dcb.l   1,$00
 
 file_index              dcb.w   1,$00
 file_directory_entry    dcb.b  32,$00 ;raw directory data
@@ -407,9 +507,21 @@ msg_oem_name        dc.b    'OEM name is ',0
 msg_disk_size       dc.b    'Total size ',0
 msg_bytes           dc.b    ' bytes',0
 msg_directory       dc.b    '   <DIR>',0
+msg_file_count          dc.b    ' files in folder',0
+msg_directory_count     dc.b    ' directories in folder',0
+msg_volume_name     dc.b    'Volume name is ',0
+msg_volume_serial   dc.b    'Volume serial number is ',0
+msg_bytes_used      dc.b    ' bytes used',0
+msg_bytes_free      dc.b    ' bytes free',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
+
+
+
+
+
 
 
 
