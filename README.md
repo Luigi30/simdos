@@ -8,7 +8,11 @@ You can run this in Easy68K. The main file is console.x86, it loads the DOS at $
 Raw 68000 programs can be saved to floppy.ima and run. Ensure they start at $800000.
 
 Commands -
+
 dir      - show contents of FAT12 filesystem at $200000
+
 load     - load a file into memory at $800000
+
 run      - begin executing from $800000
+
 shutdown - halt system
