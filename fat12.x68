@@ -2,6 +2,29 @@
 
     SECTION FAT12
     ORG     $A000
+    
+;See functions for parameters
+Trap2Table:
+Trap2Task0  dc.l    Trap2TestMessage
+Trap2Task1  dc.l    ReadBootSector
+Trap2Task2  dc.l    CountObjectsInRootDirectory
+Trap2Task3  dc.l    PrintDirectoryEntry
+Trap2Task4  dc.l    CalculateDiskCapacity
+Trap2Task5  dc.l    EnumerateRootDirectory
+Trap2Task6  dc.l    ReadFATEntry
+Trap2Task7  dc.l    GetStartingCluster    
+    
+Trap2Handler: ;Trap #2 - FAT12 driver functions.
+    mulu.w  #4, d7 ;multiply d7 by 4 to get the offset of the table entry.
+    lea     Trap2Table, a6
+    add.l   d7, a6
+    move.l  (a6), a6
+    jsr     (a6)
+    RTE
+    
+Trap2TestMessage:
+    PrintStringNL   msg_trap_2
+    rts
 
 ReadBootSector:
     ;Read the BPB into a structure in memory.
@@ -210,12 +233,11 @@ PrintDirectoryEntry:
     
     ;directory entry is 32 bytes loaded into file_directory_entry
     PushAll
-    
-    lea     file_directory_entry, a4
-    
+   
 .filename:
+    ;11 characters, dot is implied between 8-9
     ;8 characters
-    move.l  a4, a1
+    lea     file_directory_entry, a1
     move.w  #8, d1
     move.b  #1, d0
     trap    #15
@@ -226,8 +248,7 @@ PrintDirectoryEntry:
     trap    #15
     
     ;3 characters
-    add.l   #$00000008, a4
-    move.l  a4, a1
+    lea     file_directory_entry+8, a1
     move.b  #3, d1
     move.b  #1, d0
     trap    #15
@@ -238,9 +259,7 @@ PrintDirectoryEntry:
     trap    #15    
     
 .filesize: ;File size in bytes.
-    add.l   #20, a4
-    move.l  a4, a1
-    move.l  a1, a0
+    lea     file_directory_entry+28, a0
     jsr     Read32BitLittleEndian
     
     cmp     #0, d1
@@ -264,9 +283,7 @@ PrintDirectoryEntry:
     trap    #15
 
     ;year number
-    sub.l   #4, a4
-    move.l  a4, a1
-    move.l  a1, a0
+    lea     file_directory_entry+16, a0
     jsr     Read16BitLittleEndian
     
     ;d1.w is now a 16 bit date code
@@ -331,17 +348,57 @@ PrintDirectoryEntry:
     POP     d1
     POP     d2
     
-.lbl_cluster:
-    ;Debugging: What cluster does this file start on?
-    
+.lbl_attribs:
     ;spacer
     move.b  #6, d0
     move.b  #$20, d1
     trap    #15
 
-    add     #2, a4
-    move.l  a4, a1
-    move.l  a1, a0
+.lbl_readonly
+    ;Read-only
+    btst    #0, file_directory_entry+11
+    beq     .lbl_ro_space
+    move.b  #6, d0
+    move.b  #$52, d1
+    trap    #15
+    jmp     .lbl_hidden
+    
+.lbl_ro_space
+    move.b  #6, d0
+    move.b  #$20, d1
+    trap    #15  
+    
+.lbl_hidden
+    ;Hidden
+    btst    #1, file_directory_entry+11
+    beq     .lbl_h_space
+    move.b  #6, d0
+    move.b  #$48, d1
+    trap    #15
+    jmp     .lbl_system
+    
+.lbl_h_space
+    move.b  #6, d0
+    move.b  #$20, d1
+    trap    #15
+    
+.lbl_system
+    ;System
+    btst    #2, file_directory_entry+11
+    beq     .lbl_s_space
+    move.b  #6, d0
+    move.b  #$53, d1
+    trap    #15
+    jmp     .lbl_cluster
+    
+.lbl_s_space
+    move.b  #6, d0
+    move.b  #$20, d1
+    trap    #15
+    
+.lbl_cluster:
+    ;Debugging: What cluster does this file start on?
+    lea     file_directory_entry+26, a0
     jsr     Read16BitLittleEndian
     move.b  #16, d2
     move.b  #15, d0
@@ -552,9 +609,12 @@ msg_volume_name     dc.b    'Volume name is ',0
 msg_volume_serial   dc.b    'Volume serial number is ',0
 msg_bytes_used      dc.b    ' bytes used',0
 msg_bytes_free      dc.b    ' bytes free',0
+msg_trap_2          dc.b    'Trap 2 Task 0 called!',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
+
 
 
 

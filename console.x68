@@ -15,6 +15,11 @@ FAT12   EQU     3
     include 'print_macros.x68'
     include 'stack_macros.x68'
     include 'memory_macros.x68'
+    
+    ds.w    0 ;force word alignment
+Trap1Table: ;Lookup table for Trap #1 actions... eventually.
+    PrintStringNL   msg_trap_1
+    RTE
 
     ;Goal:
     ;Main code between $1000-7FFF
@@ -23,7 +28,19 @@ FAT12   EQU     3
     ORG     $1000
     
 START:                  ; first instruction of program
+    ;Prepare trap vector
+    lea     Trap1Table, a0
+    move.l  #$84, a1
+    move.l  a0, (a1)
+    lea     Trap2Handler, a0
+    move.l  #$88, a1
+    move.l  a0, (a1)
+
     PrintStringNL   msg_boot
+    
+    ;trap    #1
+    move.w  #0, d7
+    trap    #2 ;call trap 2, task 0
     
     ;load ramdisk file
     move.b  #51, d0
@@ -48,11 +65,6 @@ START:                  ; first instruction of program
     
     move.l  floppy_data, floppy_pointer
     jsr     ReadBootSector
-    
-    ;for testing, just read the file at cluster 0x40F into 0x400000
-    ;move.l  #$400000, a0
-    ;move.w  #$40F, d0
-    ;jsr     ReadFileIntoMemory
     
     PrintStringNL   msg_ready
    
@@ -358,6 +370,7 @@ DoRunCommand:
 msg_boot        dc.b    'Sim68k Disk Operating System ROM',0
 msg_ramdisk     dc.b    'Ramdisk located at 0x',0
 msg_ready       dc.b    'Ready.',0
+msg_trap_1      dc.b    'Trap #1 called!',0
 
 newline_str     dc.b    $0D,$0A,0
 prompt_str      dc.b    '> ',0
@@ -392,6 +405,9 @@ cmd_run_effect      dc.l    DoRunCommand
     include 'fat12.x68'
     
     END    START        ; last line of source
+
+
+
 
 
 
