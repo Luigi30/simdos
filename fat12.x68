@@ -28,95 +28,82 @@ Trap2TestMessage:
 
 ReadBootSector:
     ;Read the BPB into a structure in memory.
-    lea     floppy_data, a1
-    move.l  #$200000, floppy_pointer
     
     ;3 bytes: bootstrap code
-    add.l   #$00000003, floppy_pointer
+    lea     floppy_data, a1
 
     ;8 bytes: OEM name
     move.b  #0, d0
-    move.l  floppy_pointer, a1
+    lea     floppy_data+3, a1
     move.w  #8, d1
     ;trap    #15
-    add.l   #$00000008, floppy_pointer
     
     ;2 bytes: Bytes per sector
-    move.l  floppy_pointer, a0
+    lea     floppy_data+11, a0
     jsr Read16BitLittleEndian
     move.w  d1, bytes_per_sector
-    add.l   #$00000002, floppy_pointer
     
-    ;1 byte: Sectors per cluster
-    move.l  floppy_pointer, a0
+    ;1 byte : Sectors per cluster
+    lea     floppy_data+13, a0
     move.b  (a0), sectors_per_cluster
-    add.l   #$00000001, floppy_pointer
     
     ;2 bytes: Reserved sectors
-    move.l  floppy_pointer, a0
+    ;move.l  floppy_pointer, a0
+    lea     floppy_data+14, a0
     jsr Read16BitLittleEndian
     move.w  d1, reserved_sectors
-    add.l   #$00000002, floppy_pointer
     
-    ;1 byte: FAT copies
-    move.l  floppy_pointer, a0
+    ;1 byte : FAT copies
+    lea     floppy_data+16, a0
     move.b  (a0), FAT_copies
-    add.l   #$00000001, floppy_pointer
     
     ;2 bytes: Root directory entries
-    move.l  floppy_pointer, a0
+    lea     floppy_data+17, a0
     jsr Read16BitLittleEndian
     move.w  d1, root_dir_entries
-    add.l   #$00000002, floppy_pointer
     
     ;2 bytes: Number of sectors in filesystem
-    move.l  floppy_pointer, a0
+    lea     floppy_data+19, a0
     jsr Read16BitLittleEndian
     move.w  d1, sector_count
-    add.l   #$00000002, floppy_pointer
     
-    ;1 bytes: Media descriptor
-    move.l  floppy_pointer, a0
+    ;1 byte : Media descriptor
+    lea     floppy_data+21, a0
     move.b  (a0), media_descriptor
-    add.l   #$00000001, floppy_pointer 
 
     ;2 bytes: Sectors per FAT
-    move.l  floppy_pointer, a0
+    lea     floppy_data+22, a0
     jsr Read16BitLittleEndian
     move.w  d1, sectors_per_fat
-    add.l   #$00000002, floppy_pointer  
     
     ;2 bytes: Sectors per track
-    move.l  floppy_pointer, a0
+    ;move.l  floppy_pointer, a0
+    lea     floppy_data+24, a0
     jsr Read16BitLittleEndian
-    move.w  d1, sectors_per_track
-    add.l   #$00000002, floppy_pointer 
+    move.w  d1, sectors_per_track 
     
     ;2 bytes: Number of heads
-    move.l  floppy_pointer, a0
+    lea     floppy_data+26, a0
     jsr Read16BitLittleEndian
     move.w  d1, number_of_heads
-    add.l   #$00000002, floppy_pointer 
     
     ;2 bytes: Number of hidden sectors
-    move.l  floppy_pointer, a0
+    ;move.l  floppy_pointer, a0
+    lea     floppy_data+28, a0
     jsr Read16BitLittleEndian
     move.w  d1, hidden_sector_count
-    add.l   #$00000002, floppy_pointer
-    
+
     ;4 bytes: Volume serial
-    lea     floppy_data, a0
-    add     #$27, a0
+    lea     floppy_data+39, a0
     lea     volume_serial, a1
+    ;Convert to big-endian
     move.b  1(a0), 0(a1)
     move.b  0(a0), 1(a1)
     move.b  3(a0), 2(a1)
     move.b  2(a0), 3(a1)
-    ;move.l  (a0),(a1)
     
     ;11 bytes: Volume label
-    lea     floppy_data, a0
-    add     #$2B, a0
+    lea     floppy_data+43, a0
     lea     volume_label, a1
     move.l  #10, d6
 .read_volume_label:
@@ -562,6 +549,48 @@ GetStartingCluster:
     POP     d7
     POP     a1
     RTS
+    
+ConvertStringTo83:
+    ;Converts the string at a0 to a null-terminated 8.3-formatted filename.
+    ;Make sure the buffer can fit 12 characters!
+    ;Input:
+    ;- a0 = string to convert
+    ;Output:
+    ;- a0 will be converted in place.
+    PUSH    a1-a7
+    PUSH    d0-d7
+    
+    ;Find the index of the dot if present
+    move.l  #0, d0
+    
+    POP     d0-d7
+    POP     a1-a7
+    RTS
+    
+FindFileIndexByFileName:
+    ;Input:
+    ;- a0 = buffer containing an 8.3-formatted filename to search for;
+    ;Output:
+    ;- d0 = root directory file index of the file in question.
+    PUSH    a1-a7
+    PUSH    d1-d7
+    
+    move.l  #223, d7    
+    
+.next:
+    move.w  d7, file_index
+    jsr     ReadRootDirectoryEntry
+    
+    ;compare file_directory_entry's filename with the one at a0
+    move.b  #11, d0
+    jsr     StringsAreEqual
+    cmp.b   #0, d0
+    beq     .done
+    dbra    d7, .next
+
+.done
+    move.l  d7, d0
+    RTS
 
     ORG     $B000
 ;Constants
@@ -571,7 +600,7 @@ DIR_ENTRY_SIZE      equ     32
 ;Variables
 floppy_name         dc.b    'floppy.ima',0
 file_id             dcb.l   1,$00
-floppy_pointer      dcb.l   1,$00
+;floppy_pointer      dcb.l   1,$00
 floppy_logical_size dcb.w   1,$00
 
 sector_pointer      dcb.w   1,$00
@@ -613,6 +642,9 @@ msg_trap_2          dc.b    'Trap 2 Task 0 called!',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
+
+
 
 
 

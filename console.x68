@@ -38,7 +38,6 @@ START:                  ; first instruction of program
 
     PrintStringNL   msg_boot
     
-    ;trap    #1
     move.w  #0, d7
     trap    #2 ;call trap 2, task 0
     
@@ -63,7 +62,6 @@ START:                  ; first instruction of program
     trap    #15
     PrintString     newline_str
     
-    move.l  floppy_data, floppy_pointer
     jsr     ReadBootSector
     
     PrintStringNL   msg_ready
@@ -405,6 +403,7 @@ cmd_run_effect      dc.l    DoRunCommand
     include 'fat12.x68'
     
     END    START        ; last line of source
+
 
 
 
