@@ -1,7 +1,9 @@
+;Memory functions
 memset:
-    ;a1 = destination pointer
-    ;d1 = byte to fill memory with
-    ;d2 = number of bytes to set
+    ;Input:
+    ;- a1.l = destination pointer
+    ;- d1.b = byte to fill memory with
+    ;- d2.l = number of bytes to set
     PushAll
     
     subi    #1, d2 ;dbra needs 1 less    
@@ -12,10 +14,46 @@ memset:
     PopAll  
     RTS
     
+memcmp:
+    ;Compare d0 bytes at a0.L and a1.L.
+    ;If equal, d0 will be set to 0. If not, d0.B will be set to 1.
+    PUSH    a0
+    PUSH    a1
+    PUSH    d6
+    PUSH    d7
+    
+    subi.b  #1, d0
+    
+.comparison_loop:
+    move.b  (a0)+, d6
+    move.b  (a1)+, d7
+    cmp.b   d6, d7
+    bne     .notequal
+    dbra    d0, .comparison_loop
+    jmp     .equal
+    
+.notequal:
+    move.b  #1, d0
+    jmp     .gohome
+    
+.equal:
+    move.b  #0, d0
+    jmp     .gohome
+    
+.gohome:    
+    POP     d7
+    POP     d6
+    POP     a1
+    POP     a0
+    RTS
+
+;String functions
 strlen:
     ;Takes a null-terminated string.
-    ;a0.l = string to test
-    ;d0.b = string length, max 255
+    ;Input:
+    ;- a0.l = string to test
+    ;Output:
+    ;- d0.b = string length, max 255
     PUSH    a0-a7
     PUSH    d1-d7
     
@@ -32,25 +70,26 @@ strlen:
     POP     d1-d7
     POP     a0-a7
     RTS
-    
-StringsAreEqual:
-    ;Compare d0.b bytes of the strings at a0.L and a1.L.
+
+strcmp:
+    ;Compare a0.L and a1.L until we find a null character.
     ;If equal, d0 will be set to 0. If not, d0.B will be set to 1.
     PUSH    a0
     PUSH    a1
     PUSH    d6
     PUSH    d7
     
-    subi.b  #1, d0
-    
 .comparison_loop:
-    ;cmp.b  (a0)+,(a1)+
     move.b  (a0)+, d6
     move.b  (a1)+, d7
     cmp.b   d6, d7
     bne     .notequal
-    dbra    d0, .comparison_loop
-    jmp     .equal
+    
+    ;If we found a null then they're equal up to this point.
+    cmp.b   #0, d6
+    beq     .equal
+    cmp.b   #0, d7
+    beq     .equal
     
 .notequal:
     move.b  #1, d0

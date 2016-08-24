@@ -38,6 +38,13 @@ START:                  ; first instruction of program
 
     PrintStringNL   msg_boot
     
+    ;move.l  #'ABCD', filename_buffer
+    ;move.l  #'.XYZ', filename_buffer+4
+    ;move.l  #$0, filename_buffer+8
+    ;move.l  #$0,    filename_buffer+12
+    ;lea     filename_buffer, a0
+    ;jsr     ConvertStringTo83
+    
     move.w  #0, d7
     trap    #2 ;call trap 2, task 0
     
@@ -140,7 +147,7 @@ CommandCheckLoop:
     move.w  #command_length, d0
     JSR     CapitalizeString ;capitalize the input
     JSR     FindCommandLength ;find the length of the first word of the command
-    JSR     StringsAreEqual ;compare d0.b bytes at a0 and a1
+    JSR     memcmp ;compare d0.b bytes at a0 and a1
     cmp.b   #0, d0 ;0 = equal, 1 = not equal
     beq     .equal
     
@@ -344,10 +351,8 @@ CapitalizeString:
     RTS
     
 DoLoadCommand:
-    ;move.l  #'NUMB', filename_buffer
-    ;move.l  #'ER  ', filename_buffer+4
-    ;lea     filename_buffer, a0
     lea     input_buffer+5, a0
+    jsr     ConvertStringTo83
     jsr     GetStartingCluster ;puts starting cluster in d0
     
     move.l  #$800000, a0
@@ -373,7 +378,7 @@ msg_trap_1      dc.b    'Trap #1 called!',0
 newline_str     dc.b    $0D,$0A,0
 prompt_str      dc.b    '> ',0
 input_buffer    dcb.b   80,$00
-filename_buffer dcb.b   12,$00
+filename_buffer dcb.b   16,$00
     
 command_count   equ     4 ;how many commands are there?
 command_length  equ     8 ;how long can a command be?
@@ -403,6 +408,8 @@ cmd_run_effect      dc.l    DoRunCommand
     include 'fat12.x68'
     
     END    START        ; last line of source
+
+
 
 
 

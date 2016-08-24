@@ -531,7 +531,7 @@ GetStartingCluster:
     JSR     ReadRootDirectoryEntry
     JSR     strlen ;will return string length in d0
     lea     file_directory_entry, a1
-    JSR     StringsAreEqual ;compare d0.b bytes of a0 and a1
+    JSR     memcmp ;compare d0.b bytes of a0 and a1
     beq     .found
     dbra    d7, .loop
     
@@ -560,9 +560,33 @@ ConvertStringTo83:
     PUSH    a1-a7
     PUSH    d0-d7
     
-    ;Find the index of the dot if present
-    move.l  #0, d0
+    jsr     strlen ;d0 is now the string length
     
+    ;Find the index of the dot if present
+.find_dot:
+    move.l  a0, a1
+    add     d0, a1
+    cmp.b   #$2E, (a1)
+    beq     .found_dot
+    dbra    d0, .find_dot
+    jmp     .done ;no dot, don't do anything
+    
+;move everything after the dot to a0.l+8
+.found_dot:
+    move.l  a0, a2
+    add.l   #8, a2
+    
+    ;copy the extension to the correct position
+    move.b  #$0, (a1)+
+    move.b  (a1), (a2)+
+    move.b  #$0, (a1)+
+    move.b  (a1), (a2)+
+    move.b  #$0, (a1)+
+    move.b  (a1), (a2)+
+    move.b  #$0, (a1)+
+    move.b  #$0, (a2)
+    
+.done:
     POP     d0-d7
     POP     a1-a7
     RTS
@@ -583,7 +607,7 @@ FindFileIndexByFileName:
     
     ;compare file_directory_entry's filename with the one at a0
     move.b  #11, d0
-    jsr     StringsAreEqual
+    jsr     memcmp
     cmp.b   #0, d0
     beq     .done
     dbra    d7, .next
@@ -600,7 +624,6 @@ DIR_ENTRY_SIZE      equ     32
 ;Variables
 floppy_name         dc.b    'floppy.ima',0
 file_id             dcb.l   1,$00
-;floppy_pointer      dcb.l   1,$00
 floppy_logical_size dcb.w   1,$00
 
 sector_pointer      dcb.w   1,$00
@@ -642,6 +665,10 @@ msg_trap_2          dc.b    'Trap 2 Task 0 called!',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
+
+
+
 
 
 
