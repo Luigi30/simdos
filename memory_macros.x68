@@ -90,6 +90,7 @@ strcmp:
     beq     .equal
     cmp.b   #0, d7
     beq     .equal
+    jmp     .comparison_loop
     
 .notequal:
     move.b  #1, d0
@@ -105,6 +106,7 @@ strcmp:
     POP     a1
     POP     a0
     RTS
+
 
 *~Font name~Courier New~
 *~Font size~10~

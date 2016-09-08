@@ -1,3 +1,16 @@
+;***************************************
+;Function:
+;
+;Description:
+;
+;
+;Inputs:
+;   None
+;
+;Outputs:
+;   None
+;***************************************
+
 ;FAT12 library for Easy68K.
 
     SECTION FAT12
@@ -12,7 +25,9 @@ Trap2Task3  dc.l    PrintDirectoryEntry
 Trap2Task4  dc.l    CalculateDiskCapacity
 Trap2Task5  dc.l    EnumerateRootDirectory
 Trap2Task6  dc.l    ReadFATEntry
-Trap2Task7  dc.l    GetStartingCluster    
+Trap2Task7  dc.l    GetStartingCluster
+Trap2Task8  dc.l    ConvertStringTo83
+Trap2Task9  dc.l    FindFileIndexByFileName
     
 Trap2Handler: ;Trap #2 - FAT12 driver functions.
     mulu.w  #4, d7 ;multiply d7 by 4 to get the offset of the table entry.
@@ -25,10 +40,20 @@ Trap2Handler: ;Trap #2 - FAT12 driver functions.
 Trap2TestMessage:
     PrintStringNL   msg_trap_2
     rts
-
-ReadBootSector:
-    ;Read the BPB into a structure in memory.
     
+;***************************************
+;ReadBootSector
+;
+;Read the BPB into a structure in memory.
+;Returns a pointer to the BPB structure in a0.
+;
+;Inputs:
+;   None
+;
+;Outputs:
+;   a0 = pointer to BPBData
+;***************************************
+ReadBootSector:   
     ;3 bytes: bootstrap code
     lea     floppy_data, a1
 
@@ -109,15 +134,25 @@ ReadBootSector:
 .read_volume_label:
     move.b  (a0)+, (a1)+
     dbra    d6, .read_volume_label
+    
+    lea     BPBData, a0
 
     RTS
     
+;***************************************
+;Function: CountObjectsInRootDirectory
+;
+;Description:
+;   Returns the number of objects (files and folders) in the
+;   root directory of a FAT12 volume.
+;Inputs:
+;   a0.l = pointer to base address of FAT12 volume
+;
+;Outputs:
+;   d0.w = number of files found
+;   d7.w = number of directories found (TODO: combine into one register)
+;***************************************    
 CountObjectsInRootDirectory:
-    ;Input:
-    ;a0.l = address of floppy data
-    ;Output:
-    ;d0.w = number of files in root directory.
-    ;d7.w = number of directories in root directory.
     PUSH    a1-a7
     PUSH    d1-d6
     
@@ -187,12 +222,24 @@ CountObjectsInRootDirectory:
     POP     a1-a7
     RTS
     
+;***************************************
+;Function: ReadRootDirectoryEntry
+;
+;Description:
+;   Reads the root directory entry for the file with the index number [file_index]
+;   and writes it to the file_directory_entry structure.
+;Inputs:
+;   [file_index] = File index number to look up.
+;   d0.w = File index number to look up.
+;
+;Outputs:
+;   [file_directory_entry] is populated with the file's directory entry.
+;***************************************
 ReadRootDirectoryEntry:
-    ;Retrieves the root directory entry for file_index and stores it in file_directory_entry.
     PushAll
     
     ;file data offset
-    move.w  file_index, d0
+    ;move.w  file_index, d0
     mulu.w  #32, d0
     
     ;find sector 19's offset
@@ -213,12 +260,18 @@ CopyRootDirectoryEntry:
     PopAll
     RTS   
     
+;***************************************
+;Function: PrintDirectoryEntry
+;
+;Description:
+;   Prints that line that comes out when we do a DIR command.
+;Inputs:
+;   [file_directory_entry] = Loaded with a 32-byte directory entry.
+;
+;Outputs:
+;   Prints to the screen.
+;***************************************
 PrintDirectoryEntry:
-    ;One line that comes out when we do a DIR command.
-    ;This retrieves the data for the command and writes it to the screen.
-    ;Called once per entry in the directory.
-    
-    ;directory entry is 32 bytes loaded into file_directory_entry
     PushAll
    
 .filename:
@@ -408,7 +461,18 @@ CopyFileDirEntry:
     PopAll
     RTS   
     
-RunProgram.Bin: ;todo: expand this to take a filename
+;***************************************
+;Function: RunBinaryProgram
+;
+;Description:
+;   Loads a 68K binary into memory and begins execution.
+;Inputs:
+;   TODO - filename (currently just executes whatever's in cluster 0x40F)
+;
+;Outputs:
+;   Executes a program.
+;***************************************
+RunBinaryProgram: ;todo: expand this to take a filename
     ;read cluster 0x40F into memory at 0x800000
     
     ;calculate cluster size
@@ -434,6 +498,18 @@ CopyCluster:
     
     jsr     $800000   
     
+;***************************************
+;Function: CalculateDiskCapacity
+;
+;Description:
+;   Finds the FAT12 volume's capacity in bytes and writes it to the screen.
+;   Supports DIR.
+;Inputs:
+;   None
+;
+;Outputs:
+;   Outputs the bytes message to the screen.
+;***************************************
 CalculateDiskCapacity:
     PrintString msg_disk_size
     clr.l   d0
@@ -448,6 +524,17 @@ CalculateDiskCapacity:
     PrintStringNL msg_bytes
     RTS
     
+;***************************************
+;Function: EnumerateRootDirectory
+;
+;Description:
+;   ???
+;Inputs:
+;   ???
+;
+;Outputs:
+;   ???
+;***************************************
 EnumerateRootDirectory:
     move.w  #19, sector_pointer
     move.w  sector_pointer, d0
@@ -462,14 +549,18 @@ ReadDirectoryLoop:
     move.l  #31, d7
     RTS
     
+;***************************************
+;Function: ReadFATEntry
+;
+;Description:
+;   Retrieves the FAT cluster that this cluster points to.
+;Inputs:
+;   a2.l = Pointer to the beginning of the FAT.
+;   d4.w = FAT index we are currently at.
+;Outputs:
+;   d5.w = The next cluster in the file (or 0xFF8-0xFFF if the we are at the last cluster)
+;***************************************
 ReadFATEntry:
-    ;Read the FAT data for the specified cluster.
-    ;Input:
-    ;   a2 is the start of the FAT
-    ;   d4.w is the FAT index we want
-    ;Output:
-    ;   d5.w is the file's next cluster
-    
     clr.l   d5
     clr.l   d6
     clr.l   d7
@@ -514,6 +605,17 @@ ReadFATEntry:
 .done:
     RTS
     
+;***************************************
+;Function: GetStartingCluster
+;
+;Description:
+;   Find a file's starting cluster by filename.
+;Inputs:
+;   a0.l = Pointer to string containing 8.3 filename we are searching for.
+;
+;Outputs:
+;   d0.w = The first cluster in the file if found. 0x0000 if not found.
+;***************************************
 GetStartingCluster:
     ;Call ReadRootDirectoryEntry repeatedly.
     ;Stop after 224 loops or when we find the file we need.
@@ -524,10 +626,11 @@ GetStartingCluster:
     PUSH    a1
     PUSH    d7
     
-    move.w  #$FFFF, file_index
+    move.w  #$FFFF, d0
     move.b  #223, d7
 .loop:
-    addq    #1, file_index
+    addq    #1, d0
+    PUSH    d0
     JSR     ReadRootDirectoryEntry
     JSR     strlen ;will return string length in d0
     lea     file_directory_entry, a1
@@ -537,9 +640,11 @@ GetStartingCluster:
     
 .notfound:
     PrintStringNL   msg_invalid_image
+    POP     d0
     jmp     .done
     
 .found:
+    addq    #8,sp
     PrintStringNL   msg_valid_image
     move.w  file_directory_entry+26, d0
     ror.w   #8, d0
@@ -550,6 +655,17 @@ GetStartingCluster:
     POP     a1
     RTS
     
+;***************************************
+;Function: ConvertStringTo83
+;
+;Description:
+;   Converts a string to a null-terminated 8.3-formatted filename.
+;Inputs:
+;   a0.l = Pointer to the null-terminated string to convert.
+;
+;Outputs:
+;   a0.l = Pointer to the converted string.
+;***************************************
 ConvertStringTo83:
     ;Converts the string at a0 to a null-terminated 8.3-formatted filename.
     ;Make sure the buffer can fit 12 characters!
@@ -591,6 +707,17 @@ ConvertStringTo83:
     POP     a1-a7
     RTS
     
+;***************************************
+;Function: FindFileIndexByFileName
+;
+;Description:
+;   Returns the file index number for a file with the specified name.
+;Inputs:
+;   a0.l = Pointer to the null-terminated filename string.
+;
+;Outputs:
+;   d0.w = File index number if found, 0xFFFF if file could not be found.
+;***************************************
 FindFileIndexByFileName:
     ;Input:
     ;- a0 = buffer containing an 8.3-formatted filename to search for;
@@ -615,6 +742,10 @@ FindFileIndexByFileName:
 .done
     move.l  d7, d0
     RTS
+    
+    include 'littleendian.x68'
+    
+    SECTION DATA
 
     ORG     $B000
 ;Constants
@@ -629,6 +760,7 @@ floppy_logical_size dcb.w   1,$00
 sector_pointer      dcb.w   1,$00
 
 ;floppy BPB
+BPBData:
 bytes_per_sector    dcb.w   1,$00
 sectors_per_cluster dcb.b   1,$00
 reserved_sectors    dcb.w   1,$00
@@ -665,6 +797,9 @@ msg_trap_2          dc.b    'Trap 2 Task 0 called!',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
+
+
 
 
 

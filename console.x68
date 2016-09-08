@@ -15,11 +15,6 @@ FAT12   EQU     3
     include 'print_macros.x68'
     include 'stack_macros.x68'
     include 'memory_macros.x68'
-    
-    ds.w    0 ;force word alignment
-Trap1Table: ;Lookup table for Trap #1 actions... eventually.
-    PrintStringNL   msg_trap_1
-    RTE
 
     ;Goal:
     ;Main code between $1000-7FFF
@@ -28,23 +23,17 @@ Trap1Table: ;Lookup table for Trap #1 actions... eventually.
     ORG     $1000
     
 START:                  ; first instruction of program
-    ;Prepare trap vector
-    lea     Trap1Table, a0
-    move.l  #$84, a1
-    move.l  a0, (a1)
+    ;Populate the trap handler vectors
+    ;TRAP 2 = FAT12 driver
     lea     Trap2Handler, a0
     move.l  #$88, a1
     move.l  a0, (a1)
 
+    ;Setup memory
+    jsr     initialize_heap
+    
     PrintStringNL   msg_boot
-    
-    ;move.l  #'ABCD', filename_buffer
-    ;move.l  #'.XYZ', filename_buffer+4
-    ;move.l  #$0, filename_buffer+8
-    ;move.l  #$0,    filename_buffer+12
-    ;lea     filename_buffer, a0
-    ;jsr     ConvertStringTo83
-    
+
     move.w  #0, d7
     trap    #2 ;call trap 2, task 0
     
@@ -72,7 +61,14 @@ START:                  ; first instruction of program
     jsr     ReadBootSector
     
     PrintStringNL   msg_ready
-   
+
+;***************************************
+;Function: ConsoleLoop
+;
+;Description:
+;   The console input loop. When the user enters something,
+;   send it to ProcessConsole via input_buffer.
+;***************************************
 ConsoleLoop:
     PrintString prompt_str
     
@@ -239,12 +235,11 @@ DoDirCommand:
     move.l  d6, d0
 .dirloop: 
     ;loop over root directory entries and display them.    
-    move.w  d0, file_index
     jsr ReadRootDirectoryEntry
     lea     file_directory_entry, a2
     add     #11, a2    
     btst    #3, (a2)
-    bne     .loop ;Don't print volume labels.
+    bne     .loop ;Do not print volume labels.
     jsr PrintDirectoryEntry    
     
 .loop:
@@ -282,40 +277,6 @@ DoDirCommand:
     PrintStringNL   msg_bytes_free
     
     rts
-    
-Read16BitLittleEndian:
-    ;Read a 16-bit little endian number at (a0). Result will be put in d1.w
-    movem.l d2-d3, -(SP)
-        
-    move.b  (a0)+, d1
-    ror.w   #8, d1
-    move.b  (a0), d1
-    rol.w   #8, d1
-    
-    movem.l (SP)+, d2-d3
-    RTS
-    
-Read32BitLittleEndian:
-    ;Read a 32-bit little endian number at (a0). Result will be put in d1.l
-    movem.l d2-d3, -(SP)
-        
-    move.b  (a0)+, d1
-    ror.w   #8, d1
-    move.b  (a0)+, d1
-    rol.w   #8, d1
-    rol.l   #8, d1
-    rol.l   #8, d1
-    
-    move.b  (a0)+, d1
-    ror.w   #8, d1
-    move.b  (a0), d1
-    rol.w   #8, d1
-    
-    rol.l   #8, d1
-    rol.l   #8, d1
-    
-    movem.l (SP)+, d2-d3
-    RTS
     
 CapitalizeString:
     ;Capitalize a null-terminated string located at (a0) in place. Runs until it finds a null character.
@@ -367,8 +328,10 @@ DoRunCommand:
     PopAll
     rts
     
+    include 'memory_management.x68'
+    
     SECTION DATA
-    ORG     $F000
+    ORG     $F0000
 ;Constants and variables and tables and stuff
 msg_boot        dc.b    'Sim68k Disk Operating System ROM',0
 msg_ramdisk     dc.b    'Ramdisk located at 0x',0
@@ -408,6 +371,7 @@ cmd_run_effect      dc.l    DoRunCommand
     include 'fat12.x68'
     
     END    START        ; last line of source
+
 
 
 
