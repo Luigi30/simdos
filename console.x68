@@ -5,63 +5,9 @@
 * Description:
 *-----------------------------------------------------------
 
-CODE    EQU     0
-DATA    EQU     1
-MACROS  EQU     2
-FAT12   EQU     3
-
-    SECTION MACROS
-    ORG     $8000
-    include 'print_macros.x68'
-    include 'stack_macros.x68'
-    include 'memory_macros.x68'
-
-    ;Goal:
-    ;Main code between $1000-7FFF
-    ;Main variables $F000-$FFFF
     SECTION CODE
-    ORG     $1000
+    ORG     $F02000
     
-START:                  ; first instruction of program
-    ;Populate the trap handler vectors
-    ;TRAP 2 = FAT12 driver
-    lea     Trap2Handler, a0
-    move.l  #$88, a1
-    move.l  a0, (a1)
-
-    ;Setup memory
-    jsr     initialize_heap
-    
-    PrintStringNL   msg_boot
-
-    move.w  #0, d7
-    trap    #2 ;call trap 2, task 0
-    
-    ;load ramdisk file
-    move.b  #51, d0
-    lea     floppy_name, a1
-    trap    #15 ;load the floppy image
-    move.l  d1, file_id
-    
-    ;read ramdisk into memory
-    move.b  #53, d0
-    lea     floppy_data, a1
-    move.l  #1474560, d2 ;1.44mb
-    trap    #15
-    
-    PrintString     msg_ramdisk
-    ;print ramdisk location
-    lea     floppy_data, a0
-    move.l  a0, d1
-    move.b  #16, d2
-    move.b  #15, d0
-    trap    #15
-    PrintString     newline_str
-    
-    jsr     ReadBootSector
-    
-    PrintStringNL   msg_ready
-
 ;***************************************
 ;Function: ConsoleLoop
 ;
@@ -70,7 +16,7 @@ START:                  ; first instruction of program
 ;   send it to ProcessConsole via input_buffer.
 ;***************************************
 ConsoleLoop:
-    PrintString prompt_str
+    M_WriteString prompt_str
     
     ;clear the input buffer  
     lea     input_buffer, a1
@@ -192,92 +138,7 @@ FindCommandLength:
     POP     d1-d7
     POP     a0-a6
     RTS
-
-DoShutdownCommand:
-    PrintStringNL cmd_halting
-    SIMHALT
-    rts
-    
-DoDirCommand:
-    ;this gets the volume name, for now
-    lea     floppy_data, a0
-    jsr     CountObjectsInRootDirectory
-    clr.l   d6
-    add     d0, d6
-    add     d7, d6
-
-    ;display volume name text
-    PrintString msg_volume_name
-    move.l  #0, d0
-    lea     volume_label, a1
-    move.l  #11, d1
-    trap    #15
-    
-    ;display volume serial number text
-    PrintString msg_volume_serial
-    move.l  #15, d0
-    move.w  volume_serial, d1
-    move.b  #16, d2
-    trap    #15
-    
-    move.b  #6, d0
-    move.b  #$2D, d1
-    trap    #15
-    
-    move.l  #15, d0
-    move.w  volume_serial+2, d1
-    move.b  #16, d2
-    trap    #15
-    
-    PrintString newline_str
-
-    ;move.l  #9, d0 ;TODO: there are 10 objects in the root, get that number dynamically    
-    move.l  d6, d0
-.dirloop: 
-    ;loop over root directory entries and display them.    
-    jsr ReadRootDirectoryEntry
-    lea     file_directory_entry, a2
-    add     #11, a2    
-    btst    #3, (a2)
-    bne     .loop ;Do not print volume labels.
-    jsr PrintDirectoryEntry    
-    
-.loop:
-    dbra    d0, .dirloop
-    
-    ;output number of files in directory
-    clr.l   d0
-    clr.l   d1
-    clr.l   d2
-    clr.l   d7
-    lea     floppy_data, a0
-    jsr     CountObjectsInRootDirectory
-    move.w  d0, d1
-    move.l  #20, d0
-    move.b  #4, d2
-    trap    #15
-    PrintStringNL   msg_file_count
-    
-    move.w  d7, d1
-    trap    #15
-    PrintStringNL   msg_directory_count
-    
-    move.b  #20, d0
-    move.l  total_file_size, d1
-    move.b  #10, d2
-    trap    #15
-    PrintStringNL   msg_bytes_used
-    
-    move.w  bytes_per_sector, d1
-    move.w  sector_count, d3
-    sub     #33, d3 ;33 sectors are reserved
-    mulu    d3, d1
-    sub.l   total_file_size, d1
-    trap    #15
-    PrintStringNL   msg_bytes_free
-    
-    rts
-    
+        
 CapitalizeString:
     ;Capitalize a null-terminated string located at (a0) in place. Runs until it finds a null character.
     PUSH    d0
@@ -311,41 +172,23 @@ CapitalizeString:
     POP     d0
     RTS
     
-DoLoadCommand:
-    lea     input_buffer+5, a0
-    jsr     ConvertStringTo83
-    jsr     GetStartingCluster ;puts starting cluster in d0
-    
-    move.l  #$800000, a0
-    jsr     ReadFileIntoMemory
-    
-    RTS
-    
-DoRunCommand:
-    PushAll
-    move.l  #$800000, a0
-    jsr     (a0)
-    PopAll
-    rts
-    
-    include 'memory_management.x68'
+    include 'commands\shutdown.x68'
+    include 'commands\dir.x68'
+    include 'commands\load.x68'
+    include 'commands\run.x68'
     
     SECTION DATA
-    ORG     $F0000
-;Constants and variables and tables and stuff
-msg_boot        dc.b    'Sim68k Disk Operating System ROM',0
-msg_ramdisk     dc.b    'Ramdisk located at 0x',0
-msg_ready       dc.b    'Ready.',0
+    ;Constants and variables and tables and stuff
+
 msg_trap_1      dc.b    'Trap #1 called!',0
 
 newline_str     dc.b    $0D,$0A,0
 prompt_str      dc.b    '> ',0
 input_buffer    dcb.b   80,$00
 filename_buffer dcb.b   16,$00
-    
-command_count   equ     4 ;how many commands are there?
-command_length  equ     8 ;how long can a command be?
+
 command_index   dcb.w   1,$00 ;which command did we just enter?
+
 cmd_invalid     dc.b    'Command not recognized',0
 cmd_valid       dc.b    'OK',0
 
@@ -353,6 +196,9 @@ cmd_halting     dc.b    'Halting system.',0
 cmd_doing_load  dc.b    'Doing LOAD, beep boop.',0
 
 ;All commands are 8 characters, padded with nulls.
+command_count   equ     4 ;how many commands are there?
+command_length  equ     8 ;how long can a command be?
+
                 ds.w    0 ;force even word alignment
 ConsoleCommandTable:
 cmd_shutdown    dc.b    'SHUTDOWN'
@@ -367,10 +213,9 @@ cmd_dir_effect      dc.l    DoDirCommand
 cmd_load_effect     dc.l    DoLoadCommand
 cmd_run_effect      dc.l    DoRunCommand
 
-    ;FAT12 driver lives at $A000-$C000
-    include 'fat12.x68'
-    
-    END    START        ; last line of source
+
+
+
 
 
 

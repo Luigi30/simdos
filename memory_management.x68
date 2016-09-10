@@ -12,6 +12,7 @@
 ;   0x0A... = data
 ;   Last 8 bytes before the end of the chunk = size in bytes
 
+    SECTION CODE
 initialize_heap:
     move.l  HEAP_START, a0
     move.w  #CHUNK_IS_FREE,(a0)+
@@ -36,16 +37,37 @@ initialize_heap:
     rts
 
 malloc:
+    ;traverse the heap until we find a free block of at least d0 bytes
+    move.l  HEAP_START,a0
+    
+.traverseHeap
+    cmp.w   #CHUNK_IS_FREE,(a0)
+    beq     DoMemoryAllocation
+    add.l   2(a0),a0
+    
     rts
 
 free:
     rts
     
+DoMemoryAllocation:
+    move.w  #CHUNK_IS_INUSE,(a0)+
+    move.l  d0,(a0)
+    add.l   d0,a0
+    move.l  d0,(a0)+
+    
+    move.w  #CHUNK_IS_FREE,(a0)
+    ;update the next chunk size
+    rts
+    
+    SECTION DATA
 HEAP_START  dc.l    $100000
 HEAP_END    dc.l    $1FFFFF
 
 CHUNK_IS_FREE   equ $AAAA
 CHUNK_IS_INUSE  equ $5555
+
+
 
 *~Font name~Courier New~
 *~Font size~10~

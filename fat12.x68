@@ -14,7 +14,7 @@
 ;FAT12 library for Easy68K.
 
     SECTION FAT12
-    ORG     $A000
+    ORG     $FA0000
     
 ;See functions for parameters
 Trap2Table:
@@ -312,7 +312,7 @@ PrintDirectoryEntry:
     jmp     .label_date
     
 .label_dir: ;Print <DIR> on 0-byte files (todo: fix this, only directories)
-    PrintString msg_directory
+    M_WriteString msg_directory
     
 .label_date:
     ;Convert the date code into a human-readable YYYY-DD-MM date.
@@ -511,7 +511,7 @@ CopyCluster:
 ;   Outputs the bytes message to the screen.
 ;***************************************
 CalculateDiskCapacity:
-    PrintString msg_disk_size
+    M_WriteString msg_disk_size
     clr.l   d0
     clr.l   d1
     clr.l   d2
@@ -746,8 +746,6 @@ FindFileIndexByFileName:
     include 'littleendian.x68'
     
     SECTION DATA
-
-    ORG     $B000
 ;Constants
 SECTOR_ROOT_DIR     equ     19
 DIR_ENTRY_SIZE      equ     32
@@ -797,6 +795,9 @@ msg_trap_2          dc.b    'Trap 2 Task 0 called!',0
 
     ORG $200000    
 floppy_data         dcb.b   1474560,$00
+
+
+
 
 
 
